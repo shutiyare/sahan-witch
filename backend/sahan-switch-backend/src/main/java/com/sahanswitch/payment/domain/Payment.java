@@ -1,18 +1,8 @@
 package com.sahanswitch.payment.domain;
 
+import com.sahanswitch.common.exception.InvalidPaymentStateException;
 import com.sahanswitch.participant.domain.Participant;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -30,6 +20,10 @@ public class Payment {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @Column(name = "payment_reference",
             nullable = false,
@@ -103,7 +97,7 @@ public class Payment {
 
     public void startProcessing() {
         if (this.status != PaymentStatus.ACCEPTED) {
-            throw new IllegalStateException(
+            throw new InvalidPaymentStateException(
                     "Only ACCEPTED payments can start processing"
             );
         }
@@ -112,8 +106,9 @@ public class Payment {
     }
 
     public void complete() {
+
         if (this.status != PaymentStatus.PROCESSING) {
-            throw new IllegalStateException(
+            throw new InvalidPaymentStateException(
                     "Only PROCESSING payments can be completed"
             );
         }
@@ -122,8 +117,9 @@ public class Payment {
     }
 
     public void fail() {
+
         if (this.status != PaymentStatus.PROCESSING) {
-            throw new IllegalStateException(
+            throw new InvalidPaymentStateException(
                     "Only PROCESSING payments can fail"
             );
         }
