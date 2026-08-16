@@ -1,10 +1,10 @@
-package com.shutiye.backend;
+package com.sahanswitch;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class BackendApplicationTests {
+class SahanSwitchBackendApplicationTests {
 
 	@Test
 	void contextLoads() {

@@ -1,13 +1,13 @@
-package com.shutiye.backend;
+package com.sahanswitch;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class BackendApplication {
+public class SahanSwitchBackendApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(BackendApplication.class, args);
+		SpringApplication.run(SahanSwitchBackendApplication.class, args);
 	}
 
 }
