@@ -90,7 +90,13 @@ public class Participant {
     public Instant getUpdatedAt() {
         return updatedAt;
     }
+
     public void deactivate() {
         this.status = ParticipantStatus.INACTIVE;
+    }
+
+    public boolean isActive() {
+        this.status = ParticipantStatus.ACTIVE;
+        return false;
     }
 }
