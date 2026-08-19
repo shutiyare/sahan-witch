@@ -20,3 +20,9 @@ spring:
     enabled: true
     baseline-on-migrate: true
     repair-on-migrate: true
+
+  springdoc:
+    api-docs:
+      enabled: true
+    swagger-ui:
+      enabled: true

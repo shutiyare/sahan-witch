@@ -104,6 +104,16 @@ public class Payment {
 
         this.status = PaymentStatus.PROCESSING;
     }
+//    public void startProcessing() {
+//
+//        if (this.status != PaymentStatus.INITIATED) {
+//            throw new IllegalStateException(
+//                    "Payment cannot start processing from status: " + this.status
+//            );
+//        }
+//
+//        this.status = PaymentStatus.PROCESSING;
+//    }
 
     public void complete() {
 
