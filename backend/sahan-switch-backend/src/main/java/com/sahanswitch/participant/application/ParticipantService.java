@@ -7,6 +7,7 @@ import com.sahanswitch.participant.api.ParticipantResponse;
 import com.sahanswitch.participant.domain.Participant;
 import com.sahanswitch.participant.domain.ParticipantStatus;
 import com.sahanswitch.participant.infrastructure.ParticipantRepository;
+import com.sahanswitch.security.ApiKeyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,11 +21,14 @@ import java.util.UUID;
 public class ParticipantService {
     Logger logger = LoggerFactory.getLogger(ParticipantService.class);
     private final ParticipantRepository participantRepository;
+    private final ApiKeyService apiKeyService;
 
     public ParticipantService(
-            ParticipantRepository participantRepository
+            ParticipantRepository participantRepository,
+            ApiKeyService apiKeyService
     ) {
         this.participantRepository = participantRepository;
+        this.apiKeyService = apiKeyService;
     }
 
     @Transactional
@@ -45,11 +49,35 @@ public class ParticipantService {
                 request.type(),
                 ParticipantStatus.ACTIVE
         );
+//        Task 1: every new participant gets an API key. Only its hash is stored; the clear text
+//        is returned in this one response and can never be retrieved again.
+        String apiKey = apiKeyService.generateKey();
+        participant.assignApiKeyHash(apiKeyService.hash(apiKey));
 //        Save to DB
         Participant savedParticipant =
                 participantRepository.save(participant);
 // Retrun Reponse
-        return toResponse(savedParticipant);
+        return toResponse(savedParticipant, apiKey);
+    }
+
+    /**
+     * Task 1: issues a new API key for an existing participant (or replaces the current one).
+     * The previous key stops working immediately. The clear-text key is only in this response.
+     */
+    @Transactional
+    public ParticipantResponse issueApiKey(UUID id) {
+
+        Participant participant = participantRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Participant with id '" + id + "' was not found"
+                ));
+
+        String apiKey = apiKeyService.generateKey();
+        participant.assignApiKeyHash(apiKeyService.hash(apiKey));
+
+        logger.info("API key issued for participant {}", participant.getCode());
+
+        return toResponse(participant, apiKey);
     }
 
     public ParticipantResponse getById(UUID id) {
@@ -91,6 +119,10 @@ public class ParticipantService {
     }
 
     private ParticipantResponse toResponse(Participant participant) {
+        return toResponse(participant, null);
+    }
+
+    private ParticipantResponse toResponse(Participant participant, String clearTextApiKey) {
         return new ParticipantResponse(
                 participant.getId(),
                 participant.getCode(),
@@ -98,7 +130,9 @@ public class ParticipantService {
                 participant.getType(),
                 participant.getStatus(),
                 participant.getCreatedAt(),
-                participant.getUpdatedAt()
+                participant.getUpdatedAt(),
+                participant.hasApiKey(),
+                clearTextApiKey
         );
     }
 }

@@ -8,3 +8,8 @@ target/
 # Environment / secrets
 .env
 .env.*
+
+# Frontend portal
+frontend/**/node_modules/
+frontend/**/dist/
+*.tsbuildinfo

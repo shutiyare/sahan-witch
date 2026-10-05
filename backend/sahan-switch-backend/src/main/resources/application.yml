@@ -5,8 +5,86 @@ spring:
   profiles:
     active: dev
 
+  # Task 2: RabbitMQ. Override with SPRING_RABBITMQ_HOST / _PORT / _USERNAME / _PASSWORD.
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    # the outbox relay waits for the broker's confirm and detects unroutable messages
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        # start even if the queues/broker are not there yet
+        missing-queues-fatal: false
+        # a failed message is dead-lettered after the retries, never requeued forever
+        default-requeue-rejected: false
+        prefetch: 10
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2.0
+          max-interval: 10s
+
 server:
   port: 9090
+
+# Task 5: every log line carries the request's correlation id (set by CorrelationIdFilter),
+# so a payment can be traced through logs and the payment_audit_logs table.
+logging:
+  pattern:
+    level: "%5p [corr=%X{correlationId:-}]"
+
+# Task 5.3: fault tolerance for calls to participants. These are the defaults, shown here so
+# they are easy to find and tune. Everything can be overridden per environment.
+sahanswitch:
+  resilience:
+    retry:
+      max-attempts: 3          # first try + 2 retries
+      initial-backoff: 200ms   # waits 200ms, then 400ms
+      backoff-multiplier: 2.0
+    circuit-breaker:
+      sliding-window-size: 10
+      minimum-number-of-calls: 5
+      failure-rate-threshold: 50
+      wait-duration-in-open-state: 30s
+      permitted-calls-in-half-open: 3
+
+  # Task 2: when a payment is sent to the destination participant.
+  #   async (default): the request ACCEPTS the payment and writes a routing request to the outbox;
+  #                    a RabbitMQ consumer routes it a moment later.
+  #   sync:            routing happens inside the request (no broker needed).
+  routing:
+    mode: ${SAHANSWITCH_ROUTING_MODE:async}
+
+  # Task 2: transactional outbox relay (publishes outbox_events rows to RabbitMQ)
+  outbox:
+    enabled: true
+    poll-interval-ms: 1000     # pause between sweeps (fixed delay)
+    batch-size: 50
+    max-attempts: 5            # failed publishes before a row is parked as FAILED
+    confirm-timeout-ms: 5000   # wait for the broker's publisher confirm
+
+  # Task 2: optional prefix for exchange/queue names (tests use a unique one)
+  messaging:
+    prefix: ""
+
+  # Task 1: JWT signing secret and first admin come from the environment. The secret has no
+  # default here on purpose; application-dev.yml supplies a development-only value.
+  security:
+    jwt:
+      secret: ${SAHANSWITCH_JWT_SECRET:}
+      ttl: 1h
+      issuer: sahan-switch
+    admin:
+      username: ${SAHANSWITCH_ADMIN_USERNAME:admin}
+      password: ${SAHANSWITCH_ADMIN_PASSWORD:}
+    cors:
+      allowed-origins: ${SAHANSWITCH_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
 
 management:
   endpoints:

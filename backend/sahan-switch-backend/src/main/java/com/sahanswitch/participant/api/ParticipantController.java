@@ -36,6 +36,12 @@ public class ParticipantController {
         return participantService.findAll();
     }
 
+    /** Task 1: issue or rotate the participant's API key. The clear text appears only here. */
+    @PostMapping("/{id}/api-key")
+    public ParticipantResponse issueApiKey(@PathVariable UUID id) {
+        return participantService.issueApiKey(id);
+    }
+
     @PatchMapping("/{id}/deactivate")
     public ParticipantResponse deactivate(@PathVariable UUID id) {
         return participantService.deactivate(id);

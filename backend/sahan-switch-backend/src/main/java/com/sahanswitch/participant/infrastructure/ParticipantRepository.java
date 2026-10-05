@@ -10,4 +10,11 @@ public interface ParticipantRepository extends JpaRepository<Participant, UUID> 
 
     boolean existsByCode(String code);
     Optional<Participant> findByCode(String code);
+
+    /** Task 1: API-key authentication looks the caller up by the hash of the presented key. */
+    Optional<Participant> findByApiKeyHash(String apiKeyHash);
+
+    long countByStatus(com.sahanswitch.participant.domain.ParticipantStatus status);
+
+    java.util.List<Participant> findByStatus(com.sahanswitch.participant.domain.ParticipantStatus status);
 }

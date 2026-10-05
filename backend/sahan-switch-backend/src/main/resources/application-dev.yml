@@ -1,28 +1,41 @@
 spring:
 
+  # Task 5.1: credentials come from the environment. The fallbacks below only exist so a fresh
+  # local checkout still starts; production MUST set the SPRING_DATASOURCE_* variables.
   datasource:
-    url: jdbc:postgresql://localhost:5432/sahan_switch
-    username: postgres
-    password: 123
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/sahan_switch}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:123}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
       ddl-auto: validate
 
-    show-sql: true
+    show-sql: false
 
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
 
   flyway:
     enabled: true
     baseline-on-migrate: true
     repair-on-migrate: true
 
-  springdoc:
-    api-docs:
-      enabled: true
-    swagger-ui:
-      enabled: true
+# springdoc settings live at the top level (they are not Spring "spring.*" properties)
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+# Development-only defaults for the security module. Override all of them via environment
+# variables outside local development (see application.yml for the variable names).
+sahanswitch:
+  security:
+    jwt:
+      secret: ${SAHANSWITCH_JWT_SECRET:dev-only-jwt-secret-change-me-0123456789abcdef}
+    admin:
+      username: ${SAHANSWITCH_ADMIN_USERNAME:admin}
+      password: ${SAHANSWITCH_ADMIN_PASSWORD:ChangeMe!123}

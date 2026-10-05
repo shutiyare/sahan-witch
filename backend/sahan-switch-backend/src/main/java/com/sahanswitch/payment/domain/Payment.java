@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.data.annotation.CreatedDate;
@@ -16,6 +17,13 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Table(name = "payments")
 @EntityListeners(AuditingEntityListener.class)
 public class Payment {
+
+    /**
+     * Upper bound for a stored failure reason. The column is TEXT (V8), so this is not a
+     * database limit; it only stops a misbehaving participant from filling the table with
+     * megabytes of error text.
+     */
+    private static final int FAILURE_REASON_MAX_LENGTH = 4000;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -36,9 +44,15 @@ public class Payment {
             length = 100)
     private String idempotencyKey;
 
+    /** The participant that initiated the payment (column kept as participant_id). */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "participant_id", nullable = false)
-    private Participant participant;
+    private Participant senderParticipant;
+
+    /** The participant that receives the payment. Null only for legacy rows created before V6. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "destination_participant_id")
+    private Participant destinationParticipant;
 
     @Column(name = "source_account",
             nullable = false,
@@ -62,6 +76,30 @@ public class Payment {
     @Column(nullable = false, length = 30)
     private PaymentStatus status;
 
+    @Column(name = "external_reference", length = 100)
+    private String externalReference;
+
+    @Column(name = "failure_reason", columnDefinition = "TEXT")
+    private String failureReason;
+
+    // ---- ISO 20022 identifiers (Task 4, columns added in V8). All optional for plain JSON payments.
+
+    /** ISO "EndToEndId" (Max35Text): the reference the original sender gave the payment. */
+    @Column(name = "end_to_end_id", length = 35)
+    private String endToEndId;
+
+    /** ISO "UETR": globally unique id of this transaction (UUID v4), constant along the whole chain. */
+    @Column(name = "uetr")
+    private UUID uetr;
+
+    /** Debtor (payer) name as it appears in the ISO message. */
+    @Column(name = "debtor_name", length = 140)
+    private String debtorName;
+
+    /** Creditor (payee) name as it appears in the ISO message. */
+    @Column(name = "creditor_name", length = 140)
+    private String creditorName;
+
     @CreatedDate
     @Column(name = "created_at",
             nullable = false,
@@ -74,28 +112,77 @@ public class Payment {
     private Instant updatedAt;
 
     protected Payment() {
+        // Required by JPA
     }
 
-    public Payment(
-            String paymentReference,
-            String idempotencyKey,
-            Participant participant,
+    /**
+     * Creates a plain payment (no ISO identifiers supplied): a UETR is generated and the
+     * EndToEndId defaults to the payment reference.
+     */
+    public static Payment create(
+            Participant sender,
+            Participant destination,
             String sourceAccount,
             String destinationAccount,
             BigDecimal amount,
-            String currency
+            String currency,
+            String idempotencyKey
     ) {
-        this.paymentReference = paymentReference;
-        this.idempotencyKey = idempotencyKey;
-        this.participant = participant;
-        this.sourceAccount = sourceAccount;
-        this.destinationAccount = destinationAccount;
-        this.amount = amount;
-        this.currency = currency;
-        this.status = PaymentStatus.ACCEPTED;
+        return create(sender, destination, sourceAccount, destinationAccount,
+                amount, currency, idempotencyKey, null, null, null, null);
     }
 
-    public void startProcessing() {
+    /**
+     * Creates a new payment in status {@code ACCEPTED}.
+     *
+     * @param endToEndId   ISO EndToEndId, or {@code null} to default to the payment reference
+     * @param uetr         ISO UETR, or {@code null} to generate a random UUID v4
+     * @param debtorName   optional payer name
+     * @param creditorName optional payee name
+     */
+    public static Payment create(
+            Participant sender,
+            Participant destination,
+            String sourceAccount,
+            String destinationAccount,
+            BigDecimal amount,
+            String currency,
+            String idempotencyKey,
+            String endToEndId,
+            UUID uetr,
+            String debtorName,
+            String creditorName
+    ) {
+        Payment payment = new Payment();
+        payment.paymentReference = generatePaymentReference();
+        payment.idempotencyKey = idempotencyKey;
+        payment.senderParticipant = sender;
+        payment.destinationParticipant = destination;
+        payment.sourceAccount = sourceAccount;
+        payment.destinationAccount = destinationAccount;
+        payment.amount = amount;
+        payment.currency = currency.toUpperCase(Locale.ROOT);
+        payment.status = PaymentStatus.ACCEPTED;
+        payment.endToEndId = (endToEndId == null || endToEndId.isBlank())
+                ? payment.paymentReference
+                : endToEndId;
+        payment.uetr = uetr != null ? uetr : UUID.randomUUID();
+        payment.debtorName = debtorName;
+        payment.creditorName = creditorName;
+        return payment;
+    }
+
+    private static String generatePaymentReference() {
+        String randomPart = UUID.randomUUID()
+                .toString()
+                .replace("-", "")
+                .substring(0, 12)
+                .toUpperCase(Locale.ROOT);
+
+        return "SHN-" + randomPart;
+    }
+
+    public void markProcessing() {
         if (this.status != PaymentStatus.ACCEPTED) {
             throw new InvalidPaymentStateException(
                     "Only ACCEPTED payments can start processing"
@@ -104,19 +191,8 @@ public class Payment {
 
         this.status = PaymentStatus.PROCESSING;
     }
-//    public void startProcessing() {
-//
-//        if (this.status != PaymentStatus.INITIATED) {
-//            throw new IllegalStateException(
-//                    "Payment cannot start processing from status: " + this.status
-//            );
-//        }
-//
-//        this.status = PaymentStatus.PROCESSING;
-//    }
 
-    public void complete() {
-
+    public void markCompleted(String externalReference) {
         if (this.status != PaymentStatus.PROCESSING) {
             throw new InvalidPaymentStateException(
                     "Only PROCESSING payments can be completed"
@@ -124,21 +200,35 @@ public class Payment {
         }
 
         this.status = PaymentStatus.COMPLETED;
+        this.externalReference = externalReference;
     }
 
-    public void fail() {
-
-        if (this.status != PaymentStatus.PROCESSING) {
+    public void markFailed(String reason) {
+        if (this.status != PaymentStatus.ACCEPTED && this.status != PaymentStatus.PROCESSING) {
             throw new InvalidPaymentStateException(
-                    "Only PROCESSING payments can fail"
+                    "Only ACCEPTED or PROCESSING payments can fail"
             );
         }
 
         this.status = PaymentStatus.FAILED;
+        this.failureReason = truncate(reason);
+    }
+
+    private static String truncate(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return "Unknown failure";
+        }
+        return reason.length() <= FAILURE_REASON_MAX_LENGTH
+                ? reason
+                : reason.substring(0, FAILURE_REASON_MAX_LENGTH);
     }
 
     public UUID getId() {
         return id;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 
     public String getPaymentReference() {
@@ -149,8 +239,12 @@ public class Payment {
         return idempotencyKey;
     }
 
-    public Participant getParticipant() {
-        return participant;
+    public Participant getSenderParticipant() {
+        return senderParticipant;
+    }
+
+    public Participant getDestinationParticipant() {
+        return destinationParticipant;
     }
 
     public String getSourceAccount() {
@@ -171,6 +265,30 @@ public class Payment {
 
     public PaymentStatus getStatus() {
         return status;
+    }
+
+    public String getExternalReference() {
+        return externalReference;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public String getEndToEndId() {
+        return endToEndId;
+    }
+
+    public UUID getUetr() {
+        return uetr;
+    }
+
+    public String getDebtorName() {
+        return debtorName;
+    }
+
+    public String getCreditorName() {
+        return creditorName;
     }
 
     public Instant getCreatedAt() {

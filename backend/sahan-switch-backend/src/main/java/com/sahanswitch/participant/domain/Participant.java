@@ -39,6 +39,17 @@ public class Participant {
     @Column(nullable = false, length = 50)
     private ParticipantStatus status;
 
+    /**
+     * Task 1: SHA-256 hash of the participant's API key (clear text is never stored). Null until
+     * an administrator issues a key; a participant without a key cannot use the API-key login.
+     */
+    @Column(name = "api_key_hash", length = 255)
+    private String apiKeyHash;
+
+    /** Task 1: comma-separated roles the participant's API key acts with. */
+    @Column(name = "allowed_roles", nullable = false, length = 100)
+    private String allowedRoles = "PARTICIPANT";
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -91,12 +102,28 @@ public class Participant {
         return updatedAt;
     }
 
+    public String getApiKeyHash() {
+        return apiKeyHash;
+    }
+
+    public String getAllowedRoles() {
+        return allowedRoles;
+    }
+
+    public boolean hasApiKey() {
+        return apiKeyHash != null;
+    }
+
+    /** Stores the hash of a freshly issued key. Issuing again replaces (rotates) the old key. */
+    public void assignApiKeyHash(String apiKeyHash) {
+        this.apiKeyHash = apiKeyHash;
+    }
+
     public void deactivate() {
         this.status = ParticipantStatus.INACTIVE;
     }
 
     public boolean isActive() {
-        this.status = ParticipantStatus.ACTIVE;
-        return false;
+        return this.status == ParticipantStatus.ACTIVE;
     }
 }
