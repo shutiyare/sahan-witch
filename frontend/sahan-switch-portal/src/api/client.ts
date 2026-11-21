@@ -3,6 +3,8 @@ import {
   type AnalyticsSummary,
   type ApiErrorBody,
   type AuditEntry,
+  type InitiatePaymentInput,
+  type InitiatePaymentResult,
   type LoginResponse,
   type Participant,
   type ParticipantType,
@@ -144,6 +146,38 @@ export const api = {
     if (params.fromDate) query.set("fromDate", params.fromDate);
     if (params.toDate) query.set("toDate", params.toDate);
     return request<SpringPage<Payment>>(`/api/v1/payments/search?${query.toString()}`);
+  },
+
+  /**
+   * Initiate a payment as the signed-in admin (or as a participant acting as itself).
+   * Requires Idempotency-Key: same key + same body → replay (created=false); different body → 409.
+   */
+  async initiatePayment(input: InitiatePaymentInput, idempotencyKey: string): Promise<InitiatePaymentResult> {
+    const headers = new Headers();
+    headers.set("Accept", "application/json");
+    headers.set("Content-Type", "application/json");
+    headers.set("Idempotency-Key", idempotencyKey.trim());
+    const token = readStoredToken();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const response = await fetch("/api/v1/payments", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(input),
+    });
+
+    if (response.status === 401) {
+      onUnauthorized?.();
+    }
+
+    if (!response.ok) {
+      throw await toApiError(response);
+    }
+
+    const payment = (await response.json()) as Payment;
+    return { payment, created: response.status === 201 };
   },
 
   payment(id: string) {

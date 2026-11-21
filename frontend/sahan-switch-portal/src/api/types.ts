@@ -109,6 +109,26 @@ export interface PaymentSearchParams {
   sort?: string;
 }
 
+/** Body for POST /api/v1/payments (Idempotency-Key is a separate header). */
+export interface InitiatePaymentInput {
+  senderParticipantId: string;
+  destinationParticipantId: string;
+  sourceAccount: string;
+  destinationAccount: string;
+  amount: number | string;
+  currency: string;
+  endToEndId?: string | null;
+  uetr?: string | null;
+  debtorName?: string | null;
+  creditorName?: string | null;
+}
+
+export interface InitiatePaymentResult {
+  payment: Payment;
+  /** true when HTTP 201 (new); false when HTTP 200 (idempotent replay). */
+  created: boolean;
+}
+
 export interface AnalyticsSummary {
   from: string;
   to: string;
